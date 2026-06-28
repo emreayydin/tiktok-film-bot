@@ -1,0 +1,16 @@
+# Secrets
+.env
+src/tiktok_token.json
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Generated media
+src/output/
+*.mp4
+*.mp3
+
+# OS
+.DS_Store

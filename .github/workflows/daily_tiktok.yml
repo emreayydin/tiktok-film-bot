@@ -1,0 +1,83 @@
+name: Daily TikTok Film-Fakten
+
+on:
+  schedule:
+    # 2x täglich — 15:00 & 19:00 UTC = 17:00 & 21:00 Uhr DE (gute TikTok-Primetime)
+    - cron: "0 15,19 * * *"
+  workflow_dispatch:
+    inputs:
+      category:
+        description: "Genre (leer = zufällig)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Dry run (kein Upload)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # allows committing history.json back to the repo
+
+jobs:
+  create-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate & Upload TikTok
+        working-directory: src
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          # Bis die App von TikTok geprüft ist, nur SELF_ONLY möglich.
+          # Nach dem Audit auf PUBLIC_TO_EVERYONE setzen (Repo-Variable/Secret).
+          TIKTOK_PRIVACY: ${{ vars.TIKTOK_PRIVACY || 'SELF_ONLY' }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.category }}" ]; then
+            ARGS="--category '${{ github.event.inputs.category }}'"
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python main.py $ARGS
+
+      - name: Save history (avoid repeats next run)
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add history.json
+          if ! git diff --staged --quiet; then
+            git commit -m "Update history [skip ci]"
+            git pull --rebase --autostash || true
+            git push
+          fi
+
+      - name: Upload video artifact (dry run only)
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiktok-video
+          path: src/output/*.mp4
+          retention-days: 7
