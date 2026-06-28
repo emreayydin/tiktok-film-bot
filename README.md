@@ -48,7 +48,8 @@ cd src && python main.py --dry-run
 1. **Developer-App** erstellen auf <https://developers.tiktok.com/> → neue App.
 2. Produkt **"Content Posting API"** aktivieren, **Direct Post** einschalten.
 3. Scopes hinzufügen: `user.info.basic`, `video.publish`.
-4. Redirect-URI eintragen: `http://localhost:8080/callback`.
+4. Redirect-URI eintragen (TikTok verlangt HTTPS):
+   `https://emreayydin.github.io/tiktok-film-bot/callback.html`
 5. `TIKTOK_CLIENT_KEY` + `TIKTOK_CLIENT_SECRET` aus der App in `.env` setzen.
 6. Einmalig anmelden, um den Refresh-Token zu holen:
    ```bash

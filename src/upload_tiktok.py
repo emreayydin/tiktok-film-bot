@@ -32,7 +32,12 @@ TOKEN_URL = f"{API}/oauth/token/"
 
 # video.publish = direct post; user.info.basic = required to query creator info
 SCOPES = "user.info.basic,video.publish"
-REDIRECT_URI = os.environ.get("TIKTOK_REDIRECT_URI", "http://localhost:8080/callback")
+# TikTok requires an HTTPS redirect URI (http://localhost is rejected), so we use
+# a static callback page on the already-verified GitHub Pages domain. The page just
+# shows the login code for the user to paste back into this script.
+REDIRECT_URI = os.environ.get(
+    "TIKTOK_REDIRECT_URI",
+    "https://emreayydin.github.io/tiktok-film-bot/callback.html")
 TOKEN_FILE = Path(__file__).resolve().parent / "tiktok_token.json"
 
 MAX_SINGLE_CHUNK = 64 * 1024 * 1024   # 64 MB — bigger files must be chunked
@@ -193,11 +198,15 @@ def _wait_for_publish(access_token, publish_id, timeout=300):
 # ---------------- one-time local OAuth ----------------
 
 def authorize():
-    """Runs a local OAuth flow to obtain the long-lived refresh token."""
+    """One-time OAuth flow to obtain the long-lived refresh token.
+
+    Opens the TikTok login in the browser; after approving, the browser lands on
+    the HTTPS callback page (GitHub Pages) which shows the login code. Paste that
+    code back here and it's exchanged for the refresh token.
+    """
     import secrets
     import urllib.parse
     import webbrowser
-    from http.server import BaseHTTPRequestHandler, HTTPServer
 
     client_key = os.environ["TIKTOK_CLIENT_KEY"]
     client_secret = os.environ["TIKTOK_CLIENT_SECRET"]
@@ -214,29 +223,11 @@ def authorize():
     print(f"\nÖffne im Browser zum Anmelden:\n{url}\n")
     webbrowser.open(url)
 
-    code_holder = {}
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            q = urllib.parse.urlparse(self.path).query
-            qs = urllib.parse.parse_qs(q)
-            code_holder["code"] = qs.get("code", [None])[0]
-            code_holder["state"] = qs.get("state", [None])[0]
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write("<h2>Fertig! Du kannst dieses Fenster schließen.</h2>".encode())
-
-        def log_message(self, *args):
-            pass
-
-    port = int(urllib.parse.urlparse(REDIRECT_URI).port or 8080)
-    httpd = HTTPServer(("localhost", port), Handler)
-    httpd.handle_request()  # serve exactly one request (the callback)
-
-    code = code_holder.get("code")
-    if not code or code_holder.get("state") != state:
-        raise RuntimeError("Kein gültiger Authorization-Code empfangen.")
+    code = input("Füge hier den Code von der Callback-Seite ein und drücke Enter:\n> ").strip()
+    if not code:
+        raise RuntimeError("Kein Code eingegeben.")
+    # TikTok URL-encodes the code (it often ends with '*' as %2A) — normalize it.
+    code = urllib.parse.unquote(code)
 
     resp = requests.post(TOKEN_URL, headers={
         "Content-Type": "application/x-www-form-urlencoded",
