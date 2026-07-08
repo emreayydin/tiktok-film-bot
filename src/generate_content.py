@@ -24,18 +24,20 @@ faktisch korrekt und überraschend sein — echte Behind-the-Scenes-Fakten, Triv
 Easter Eggs, Dreh-Anekdoten oder verblüffende Hintergründe.
 
 HOOK (intro) — die ersten 2 Sekunden entscheiden über alles:
-- Max 25 Wörter, sofortiger Pattern-Interrupt (schockierende Zahl, scheinbarer
+- Max 20 Wörter, sofortiger Pattern-Interrupt (schockierende Zahl, scheinbarer
   Widerspruch, "Niemand hat gemerkt, dass…"), nenne den Titel
 - Kündige den stärksten Fakt an ("Der letzte Fakt lässt dich [Titel] neu sehen")
 - Niemals "Wusstest du?"
 
 FAKTEN — genau 5 Stück:
-- Jeder Fakt 35-55 Wörter, kurze gesprochene Sätze, sofort auf den Punkt
+- Jeder Fakt 28-38 Wörter, knackig und dicht, kein Füllwort, sofort auf den Punkt
 - Überraschend & wahr; nach Wucht sortiert — der KRASSESTE Fakt kommt ZULETZT
 - "headline" = knackige Überschrift (max 38 Zeichen)
 
-OUTRO — max 25 Wörter: eine zugespitzte Frage, die zum KOMMENTIEREN provoziert
+OUTRO — max 18 Wörter: eine zugespitzte Frage, die zum KOMMENTIEREN provoziert
 (z.B. "Welcher Fakt war für dich neu? Schreib die Nummer!") + "Folge für mehr".
+
+Das gesamte Skript soll gesprochen ca. 75-95 Sekunden ergeben (mindestens 60).
 
 Sprache: Deutsch, direkte Ansprache (du).
 

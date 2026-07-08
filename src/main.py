@@ -67,9 +67,11 @@ def run(category: str = None, dry_run: bool = False, privacy: str = None,
         json.dumps(content, ensure_ascii=False, indent=2))
 
     # 2. Narration: intro + 5 facts + outro -> one audio track with timing
+    # Speak only the fact text (the headline is shown on screen, not read aloud —
+    # avoids redundant "Headline. Text" narration and keeps videos tighter).
     segments = [("intro", content["intro"])]
     for i, f in enumerate(content["facts"], 1):
-        segments.append((f"fact_{i}", f"{f['headline']}. {f['text']}"))
+        segments.append((f"fact_{i}", f["text"]))
     segments.append(("outro", content["outro"]))
 
     log.info("Erzeuge Sprachausgabe...")
