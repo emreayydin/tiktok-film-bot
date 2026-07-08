@@ -44,13 +44,20 @@ Sprache: Deutsch, direkte Ansprache (du).
 WICHTIG für gültiges JSON: KEINE doppelten Anführungszeichen (") in den Texten —
 nutze einfache (') oder keine. Keine Zeilenumbrüche in Werten.
 
+BILD-PROMPTS (image_prompt / hook_visual): Für jeden Fakt und den Hook einen
+englischen, cinematischen KI-Bild-Prompt. Regeln: atmosphärisch & thematisch
+(Schauplatz, Objekte, Stimmung, Licht), 16:9-vertikal denkbar; KEINE echten
+Schauspieler, keine Prominenten, keine Marken-/Studio-Logos, kein Text im Bild.
+Stil-Suffix immer anhängen: "cinematic, dramatic lighting, film still, 9:16 vertical".
+
 Antworte am ENDE mit NUR EINEM JSON-Objekt (keine Erklärung danach):
 {{
   "subject": "Exakter Film-/Serientitel",
   "kind": "Film" oder "Serie",
   "title": "Clickbait-Titel mit dem Titel, max 70 Zeichen",
   "intro": "Hook-Text",
-  "facts": [{{"headline": "kurze Überschrift", "text": "Fakt-Text 35-55 Wörter"}}],
+  "hook_visual": "englischer cinematischer Bild-Prompt für den Hook",
+  "facts": [{{"headline": "kurze Überschrift", "text": "Fakt-Text", "image_prompt": "englischer cinematischer Bild-Prompt"}}],
   "outro": "Outro-Text",
   "tags": ["film","serie","kino","tag4","tag5"],
   "visual_tags": ["englische","pexels","suchbegriffe","zum","mood"],

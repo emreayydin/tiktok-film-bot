@@ -301,10 +301,65 @@ def _build_base_montage(clips: list[str], out_path: str) -> str:
     return out_path
 
 
+# ---------- AI-visual section background ----------
+
+def _img_segment(img: str, dur: float, out: str, zoom_in: bool = True):
+    frames = max(1, int(dur * 30))
+    inc = 0.14 / frames  # accumulates per output frame (d=1) for a smooth push
+    if zoom_in:
+        z = f"min(zoom+{inc:.6f},1.14)"
+    else:
+        z = f"if(eq(on,0),1.14,max(zoom-{inc:.6f},1.0))"
+    vf = (f"scale={int(VIDEO_WIDTH*1.3)}:{int(VIDEO_HEIGHT*1.3)}:force_original_aspect_ratio=increase,"
+          f"crop={int(VIDEO_WIDTH*1.3)}:{int(VIDEO_HEIGHT*1.3)},"
+          f"zoompan=z='{z}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+          f"s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:fps=30,setsar=1,format=yuv420p")
+    cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-t", f"{dur:.2f}",
+           "-i", img, "-vf", vf, "-c:v", "libx264", "-preset", "veryfast",
+           "-crf", "23", "-pix_fmt", "yuv420p", "-r", "30", "-t", f"{dur:.2f}", out]
+    subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+
+def _vid_segment(video: str, dur: float, out: str):
+    vf = (f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase,"
+          f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},fps=30,setsar=1,format=yuv420p")
+    cmd = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", video, "-t", f"{dur:.2f}",
+           "-vf", vf, "-an", "-c:v", "libx264", "-preset", "veryfast",
+           "-crf", "23", "-pix_fmt", "yuv420p", "-r", "30", out]
+    subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+
+def _build_sectioned_bg(visuals: dict, sections: list, work, out_path: str) -> str:
+    """One sub-clip per narration section (image=Ken-Burns, video=Runway hook),
+    each exactly the section's length, concatenated in order."""
+    parts, last_img, i = [], None, 0
+    for idx, s in enumerate(sections):
+        dur = max(0.5, s["end"] - s["start"])
+        v = visuals.get(s["label"])
+        seg = str(work / f"bg_{idx}.mp4")
+        if v and v["type"] == "video":
+            _vid_segment(v["path"], dur, seg)
+        else:
+            img = v["path"] if v else last_img
+            if img is None:
+                img = _gradient_png((10, 12, 28), (30, 26, 62), str(work / "bgfallback.png"))
+            _img_segment(img, dur, seg, zoom_in=(idx % 2 == 0))
+        if v and v["type"] == "image":
+            last_img = v["path"]
+        parts.append(seg)
+        i += 1
+
+    list_path = work / "bgsegs.txt"
+    list_path.write_text("\n".join(f"file '{p}'" for p in parts))
+    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_path),
+                    "-c", "copy", out_path], capture_output=True, text=True, check=True)
+    return out_path
+
+
 # ---------- compose ----------
 
 def render_video(content: dict, audio_path: str, sections: list[dict],
-                 words: list[dict], output_path: str) -> str:
+                 words: list[dict], output_path: str, visuals: dict = None) -> str:
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix="tt_"))
 
@@ -312,10 +367,21 @@ def render_video(content: dict, audio_path: str, sections: list[dict],
     if total <= 0:
         total = 80.0
 
-    # ----- background -----
-    clips = fetch_background_clips(content.get("visual_tags", []), str(work / "clips"),
-                                   count=12, orientation="portrait")
-    if clips:
+    # ----- background: AI visuals per section (preferred) -> Pexels montage -> gradient -----
+    bg_built = None
+    if visuals and sections:
+        try:
+            bg_built = _build_sectioned_bg(visuals, sections, work, str(work / "aibg.mp4"))
+        except Exception as e:
+            print(f"AI-Hintergrund fehlgeschlagen ({e}) — nutze Pexels.")
+
+    clips = [] if bg_built else fetch_background_clips(
+        content.get("visual_tags", []), str(work / "clips"), count=12, orientation="portrait")
+
+    if bg_built:
+        bg_input = ["-i", bg_built]
+        bg_filter = f"[0:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1[bg]"
+    elif clips:
         base = _build_base_montage(clips, str(work / "base.mp4"))
         bg_input = ["-stream_loop", "-1", "-i", base]
         bg_filter = f"[0:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1[bg]"

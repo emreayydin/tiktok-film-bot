@@ -82,10 +82,20 @@ def run(category: str = None, dry_run: bool = False, privacy: str = None,
     if dur < 60:
         log.warning(f"Video nur {dur:.0f}s — unter der 1-Minuten-Grenze. Wird trotzdem gerendert.")
 
-    # 3. Render vertical video (9:16) with synced captions + FAKT badges
+    # 3. AI visuals (Flux images per fact + Runway hook); None if no FAL_KEY -> Pexels
+    visuals = None
+    if os.environ.get("FAL_KEY"):
+        try:
+            from generate_visuals import build_visuals
+            log.info("Generiere KI-Visuals (Flux/Runway)...")
+            visuals = build_visuals(content, str(OUTPUT_DIR / f"visuals_{ts}"))
+        except Exception as e:
+            log.warning(f"KI-Visuals fehlgeschlagen ({e}) — nutze Pexels-Fallback.")
+
+    # 4. Render vertical video (9:16) with synced captions + FAKT badges
     log.info("Rendere Video (9:16)...")
     video_path = str(OUTPUT_DIR / f"video_{ts}.mp4")
-    render_video(content, audio_path, sections, words, video_path)
+    render_video(content, audio_path, sections, words, video_path, visuals=visuals)
     log.info(f"Video: {video_path}")
 
     # Optional eye-catching cover (upload as TikTok cover for more taps)

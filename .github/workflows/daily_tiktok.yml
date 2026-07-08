@@ -49,6 +49,9 @@ jobs:
           TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
           TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          # KI-Visuals (optional): fehlen die Keys, greift automatisch Pexels
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          RUNWAY_API_KEY: ${{ secrets.RUNWAY_API_KEY }}
           UPLOADER: tiktok
           # 'inbox' = Video landet in deinen TikTok-Entwürfen; du tippst in der App
           # auf Posten (öffentlich). Kostenlos, kein App-Audit nötig.
