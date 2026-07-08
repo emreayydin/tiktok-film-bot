@@ -54,6 +54,35 @@ def flux_image(prompt: str, out_path: str, model: str = FACT_MODEL) -> tuple[str
     return out_path, url
 
 
+# ---------------- fal.ai image -> video (stay on one provider) ----------------
+
+FAL_QUEUE = "https://queue.fal.run"
+
+
+def fal_image_to_video(image_url: str, prompt: str, out_path: str, model: str) -> str:
+    """Animates an image into a vertical clip via a fal.ai video model (queue API)."""
+    key = os.environ["FAL_KEY"]
+    headers = {"Authorization": f"Key {key}", "Content-Type": "application/json"}
+    body = {"prompt": prompt, "image_url": image_url, "aspect_ratio": "9:16", "duration": "5"}
+    r = requests.post(f"{FAL_QUEUE}/{model}", headers=headers, json=body, timeout=60)
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"fal i2v init {r.status_code}: {r.text[:300]}")
+    j = r.json()
+    status_url, response_url = j["status_url"], j["response_url"]
+
+    deadline = time.time() + 300
+    while time.time() < deadline:
+        time.sleep(6)
+        st = requests.get(status_url, headers=headers, timeout=30).json()
+        if st.get("status") == "COMPLETED":
+            res = requests.get(response_url, headers=headers, timeout=60).json()
+            url = res.get("video", {}).get("url") or res["video"]["url"]
+            return _download(url, out_path)
+        if st.get("status") in ("FAILED", "ERROR"):
+            raise RuntimeError(f"fal i2v {st}")
+    raise RuntimeError("fal i2v timeout")
+
+
 # ---------------- Runway image -> video ----------------
 
 def runway_hook(image_url: str, prompt: str, out_path: str, duration: int = 5) -> str:
@@ -116,17 +145,24 @@ def build_visuals(content: dict, work_dir: str) -> dict | None:
     try:
         hp, hook_url = flux_image(hook_prompt, os.path.join(work_dir, "hook.png"),
                                   model=HOOK_MODEL)
+        motion = f"slow cinematic camera push, {hook_prompt}"
+        fal_i2v = os.environ.get("FAL_HOOK_VIDEO_MODEL")  # e.g. fal-ai/ltx-video-13b-098/image-to-video
+        visuals["intro"] = {"type": "image", "path": hp}   # default: animated still
         if os.environ.get("RUNWAY_API_KEY"):
             try:
-                clip = runway_hook(hook_url, f"slow cinematic camera push, {hook_prompt}",
-                                   os.path.join(work_dir, "hook.mp4"))
+                clip = runway_hook(hook_url, motion, os.path.join(work_dir, "hook.mp4"))
                 visuals["intro"] = {"type": "video", "path": clip}
                 print("Runway Hook-Clip ✓")
             except Exception as e:
                 print(f"Runway Hook fehlgeschlagen ({e}) — nutze Standbild-Hook")
-                visuals["intro"] = {"type": "image", "path": hp}
-        else:
-            visuals["intro"] = {"type": "image", "path": hp}
+        elif fal_i2v:
+            try:
+                clip = fal_image_to_video(hook_url, motion,
+                                          os.path.join(work_dir, "hook.mp4"), fal_i2v)
+                visuals["intro"] = {"type": "video", "path": clip}
+                print("fal.ai Hook-Clip ✓")
+            except Exception as e:
+                print(f"fal.ai Hook-Video fehlgeschlagen ({e}) — nutze Standbild-Hook")
     except Exception as e:
         print(f"Hook-Bild fehlgeschlagen: {e}")
 
