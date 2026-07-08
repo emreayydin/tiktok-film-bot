@@ -43,27 +43,27 @@ Test ohne Upload:
 cd src && python main.py --dry-run
 ```
 
-## TikTok einrichten (einmalig)
+## Öffentliches Posten via Postiz (empfohlener Weg)
 
-1. **Developer-App** erstellen auf <https://developers.tiktok.com/> → neue App.
-2. Produkt **"Content Posting API"** aktivieren, **Direct Post** einschalten.
-3. Scopes hinzufügen: `user.info.basic`, `video.publish`.
-4. Redirect-URI eintragen (TikTok verlangt HTTPS):
-   `https://emreayydin.github.io/tiktok-film-bot/callback.html`
-5. `TIKTOK_CLIENT_KEY` + `TIKTOK_CLIENT_SECRET` aus der App in `.env` setzen.
-6. Einmalig anmelden, um den Refresh-Token zu holen:
+TikTok erlaubt über die eigene Content Posting API **kein** vollautomatisches
+öffentliches Posten für private Nutzung (Apps für Eigengebrauch werden abgelehnt).
+Lösung: der Bot postet über **[Postiz](https://postiz.com)** — einen von TikTok
+zugelassenen Scheduler. Du verbindest dein TikTok-Konto einmal in Postiz, der Bot
+lädt die Videos per Postiz-CLI hoch und plant sie öffentlich.
+
+**Einrichtung (einmalig):**
+1. Konto auf <https://postiz.com> anlegen.
+2. **Channels → Add channel → TikTok** → dein TikTok-Konto verbinden.
+3. **Settings → API/Public API** → API-Key erzeugen.
+4. Lokal: `export POSTIZ_API_KEY=...` (oder in `.env`), dann testen:
    ```bash
-   cd src && python upload_tiktok.py
+   npm install -g postiz
+   cd src && python upload_postiz.py     # listet verbundene Kanäle
+   python main.py                        # rendert + postet öffentlich via Postiz
    ```
-   Browser öffnet sich → einloggen → der ausgegebene `refresh_token` kommt als
-   GitHub-Secret `TIKTOK_REFRESH_TOKEN`.
 
-### ⚠️ App-Audit (wichtig)
-Eine **ungeprüfte** App darf nur **privat** posten (`SELF_ONLY`) — das Video liegt
-sichtbar nur für dich auf deinem Profil. Erst nach dem **TikTok-Audit** der App
-(im Developer-Portal beantragen) ist öffentliches Posten erlaubt. Danach
-Repo-Variable `TIKTOK_PRIVACY=PUBLIC_TO_EVERYONE` setzen — der Bot postet dann
-automatisch öffentlich. Der Code wählt automatisch die jeweils erlaubte Stufe.
+Der Uploader ist umschaltbar: `--uploader postiz` (Standard, öffentlich) oder
+`--uploader tiktok` (eigene TikTok-App, nur privat/Sandbox — siehe unten).
 
 ## GitHub-Actions-Autopilot
 
@@ -71,16 +71,26 @@ Secrets im Repo (`Settings → Secrets and variables → Actions`):
 
 - `ANTHROPIC_API_KEY`
 - `PEXELS_API_KEY`
-- `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REFRESH_TOKEN`
-- optionale Variable `TIKTOK_PRIVACY` (Standard `SELF_ONLY`)
+- `POSTIZ_API_KEY`
+- optionale Variablen: `POSTIZ_TIKTOK_ID` (sonst Auto-Discovery),
+  `TIKTOK_PRIVACY` (Standard `PUBLIC_TO_EVERYONE`)
 
-Der Workflow `daily_tiktok.yml` läuft 2×/Tag (17:00 & 21:00 Uhr DE) und committet
-`history.json` zurück, damit kein Film doppelt vorkommt. Manueller Start +
-Dry-Run über **Actions → Run workflow**.
+Der Workflow `daily_tiktok.yml` läuft 2×/Tag (17:00 & 21:00 Uhr DE), installiert
+die Postiz-CLI, rendert + postet öffentlich und committet `history.json` zurück,
+damit kein Film doppelt vorkommt. Manueller Start + Dry-Run über
+**Actions → Run workflow**.
+
+## Alternative: eigene TikTok-App (nur privat/Sandbox)
+
+`src/upload_tiktok.py` postet direkt über eine eigene TikTok-App. Damit sind aber
+nur **private** Videos möglich (`SELF_ONLY`), da TikTok Privat-Apps nicht für
+öffentliches Posten freigibt. Nutzung: `--uploader tiktok`. OAuth-Login einmalig
+via `python upload_tiktok.py` (Redirect-URI
+`https://emreayydin.github.io/tiktok-film-bot/callback.html`).
 
 ## Wartung
-- **TikTok-Refresh-Token** ist ~365 Tage gültig → einmal jährlich `python
-  upload_tiktok.py` neu ausführen und Secret aktualisieren.
+- **Postiz-TikTok-Verbindung** gelegentlich prüfen (Token laufen ab → in Postiz
+  neu verbinden).
 - Echte Filmausschnitte sind urheberrechtlich geschützt und werden NICHT
   automatisch genutzt — der Hintergrund ist generischer cinematischer B-Roll,
   passend zum Genre/Mood des jeweiligen Films.

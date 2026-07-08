@@ -19,7 +19,16 @@ except ImportError:
 from generate_content import generate_content
 from text_to_speech import build_narration
 from render_video import render_video
-from upload_tiktok import upload_video
+
+
+def _get_uploader(name: str):
+    """Selects the upload backend. 'postiz' posts publicly via the Postiz partner
+    (recommended); 'tiktok' uses our own TikTok app (Sandbox/private only)."""
+    if name == "tiktok":
+        from upload_tiktok import upload_video
+    else:
+        from upload_postiz import upload_video
+    return upload_video
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,7 +53,8 @@ def _build_caption(content: dict) -> str:
     return f"{content['title']}\n\n" + " ".join(hashtags[:12])
 
 
-def run(category: str = None, dry_run: bool = False, privacy: str = None):
+def run(category: str = None, dry_run: bool = False, privacy: str = None,
+        uploader: str = "postiz"):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -80,14 +90,15 @@ def run(category: str = None, dry_run: bool = False, privacy: str = None):
         log.info(f"[DRY RUN] Nicht hochgeladen. Gespeichert: {video_path}")
         return video_path
 
-    # 4. Upload to TikTok
+    # 4. Upload to TikTok (via Postiz by default, or our own TikTok app)
     caption = _build_caption(content)
-    log.info("Lade zu TikTok hoch...")
-    publish_id = upload_video(video_path, caption, privacy=privacy)
+    upload_video = _get_uploader(uploader)
+    log.info(f"Lade zu TikTok hoch (via {uploader})...")
+    result = upload_video(video_path, caption, privacy=privacy)
     # Only record actually-posted videos so the film is avoided next time
     history.add_entry(content["subject"], content["title"], content.get("category", ""))
-    log.info(f"Fertig! publish_id={publish_id}")
-    return publish_id
+    log.info(f"Fertig! {result}")
+    return result
 
 
 if __name__ == "__main__":
@@ -95,6 +106,10 @@ if __name__ == "__main__":
     parser.add_argument("--category", type=str, default=None, help="Genre (leer = zufällig)")
     parser.add_argument("--dry-run", action="store_true", help="Kein Upload, nur lokale Ausgabe")
     parser.add_argument("--privacy", type=str, default=os.environ.get("TIKTOK_PRIVACY"),
-                        help="SELF_ONLY | PUBLIC_TO_EVERYONE | ... (Standard: SELF_ONLY bis App geprüft)")
+                        help="PUBLIC_TO_EVERYONE | SELF_ONLY | ... (Standard: Postiz -> public)")
+    parser.add_argument("--uploader", type=str, default=os.environ.get("UPLOADER", "postiz"),
+                        choices=["postiz", "tiktok"],
+                        help="postiz = öffentlich über Partner (empfohlen); tiktok = eigene App (privat/Sandbox)")
     args = parser.parse_args()
-    run(category=args.category, dry_run=args.dry_run, privacy=args.privacy)
+    run(category=args.category, dry_run=args.dry_run, privacy=args.privacy,
+        uploader=args.uploader)

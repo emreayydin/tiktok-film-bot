@@ -41,17 +41,21 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Generate & Upload TikTok
+      - name: Set up Node & Postiz CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install -g postiz
+
+      - name: Generate & Upload TikTok (public via Postiz)
         working-directory: src
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
-          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
-          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
-          # Bis die App von TikTok geprüft ist, nur SELF_ONLY möglich.
-          # Nach dem Audit auf PUBLIC_TO_EVERYONE setzen (Repo-Variable/Secret).
-          TIKTOK_PRIVACY: ${{ vars.TIKTOK_PRIVACY || 'SELF_ONLY' }}
+          POSTIZ_API_KEY: ${{ secrets.POSTIZ_API_KEY }}
+          POSTIZ_TIKTOK_ID: ${{ vars.POSTIZ_TIKTOK_ID }}   # optional; sonst auto-discovery
+          UPLOADER: postiz
+          TIKTOK_PRIVACY: ${{ vars.TIKTOK_PRIVACY || 'PUBLIC_TO_EVERYONE' }}
         run: |
           ARGS=""
           if [ -n "${{ github.event.inputs.category }}" ]; then
