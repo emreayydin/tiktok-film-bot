@@ -54,7 +54,7 @@ def _build_caption(content: dict) -> str:
 
 
 def run(category: str = None, dry_run: bool = False, privacy: str = None,
-        uploader: str = "postiz"):
+        uploader: str = "tiktok"):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -107,9 +107,10 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Kein Upload, nur lokale Ausgabe")
     parser.add_argument("--privacy", type=str, default=os.environ.get("TIKTOK_PRIVACY"),
                         help="PUBLIC_TO_EVERYONE | SELF_ONLY | ... (Standard: Postiz -> public)")
-    parser.add_argument("--uploader", type=str, default=os.environ.get("UPLOADER", "postiz"),
+    parser.add_argument("--uploader", type=str, default=os.environ.get("UPLOADER", "tiktok"),
                         choices=["postiz", "tiktok"],
-                        help="postiz = öffentlich über Partner (empfohlen); tiktok = eigene App (privat/Sandbox)")
+                        help="tiktok = eigene App, Inbox/Entwürfe (kostenlos, du postest per Tap); "
+                             "postiz = öffentlich über Partner (kostenpflichtig)")
     args = parser.parse_args()
     run(category=args.category, dry_run=args.dry_run, privacy=args.privacy,
         uploader=args.uploader)

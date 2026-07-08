@@ -30,8 +30,9 @@ API = "https://open.tiktokapis.com/v2"
 AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/"
 TOKEN_URL = f"{API}/oauth/token/"
 
-# video.publish = direct post; user.info.basic = required to query creator info
-SCOPES = "user.info.basic,video.publish"
+# video.upload = upload to drafts/inbox (user publishes manually, can be PUBLIC, free);
+# video.publish = direct post (own app can only post SELF_ONLY); user.info.basic for creator info
+SCOPES = "user.info.basic,video.upload,video.publish"
 # TikTok requires an HTTPS redirect URI (http://localhost is rejected), so we use
 # a static callback page on the already-verified GitHub Pages domain. The page just
 # shows the login code for the user to paste back into this script.
@@ -106,8 +107,61 @@ def _pick_privacy(requested: str, options: list[str]) -> str:
 
 # ---------------- upload ----------------
 
-def upload_video(video_path: str, caption: str,
-                 privacy: str = None) -> str:
+def _chunking(size: int):
+    if size <= MAX_SINGLE_CHUNK:
+        return size, 1
+    return CHUNK_SIZE, size // CHUNK_SIZE  # last chunk absorbs the remainder
+
+
+def upload_video(video_path: str, caption: str, privacy: str = None,
+                 mode: str = None) -> str:
+    """Uploads a video to TikTok.
+
+    mode='inbox' (default, FREE + can be PUBLIC): sends the video to the user's
+      TikTok drafts/inbox. The user opens the app and taps Publish (choosing the
+      visibility themselves). Works without app audit.
+    mode='direct': posts directly via the app — but an unaudited/personal app can
+      only post SELF_ONLY (private).
+    """
+    mode = mode or os.environ.get("TIKTOK_MODE", "inbox")
+    return (_inbox_upload if mode == "inbox" else _direct_post)(
+        video_path, caption, privacy)
+
+
+def _inbox_upload(video_path: str, caption: str, privacy: str = None) -> str:
+    """Uploads to the creator's TikTok inbox/drafts (no privacy set here — the
+    creator picks it when publishing in the app). Returns the publish_id."""
+    access_token = get_access_token()
+    size = os.path.getsize(video_path)
+    chunk_size, total_chunks = _chunking(size)
+
+    init_body = {
+        "source_info": {
+            "source": "FILE_UPLOAD",
+            "video_size": size,
+            "chunk_size": chunk_size,
+            "total_chunk_count": total_chunks,
+        },
+    }
+    resp = requests.post(f"{API}/post/publish/inbox/video/init/", headers={
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json; charset=UTF-8",
+    }, data=json.dumps(init_body), timeout=30)
+    data = resp.json()
+    if data.get("error", {}).get("code") not in (None, "ok"):
+        raise RuntimeError(f"inbox init fehlgeschlagen: {data}")
+
+    publish_id = data["data"]["publish_id"]
+    upload_url = data["data"]["upload_url"]
+    print(f"Inbox-Init OK, publish_id={publish_id}")
+
+    _put_chunks(upload_url, video_path, size, chunk_size, total_chunks)
+    _wait_for_publish(access_token, publish_id)
+    print("✓ Video liegt in deinen TikTok-Entwürfen — in der App öffnen und posten.")
+    return publish_id
+
+
+def _direct_post(video_path: str, caption: str, privacy: str = None) -> str:
     """Direct-posts a video. Returns the publish_id. Raises on failure."""
     access_token = get_access_token()
     info = query_creator_info(access_token)
@@ -118,11 +172,7 @@ def upload_video(video_path: str, caption: str,
     print(f"Privacy: {privacy_level} (erlaubt: {options})")
 
     size = os.path.getsize(video_path)
-    if size <= MAX_SINGLE_CHUNK:
-        chunk_size, total_chunks = size, 1
-    else:
-        chunk_size = CHUNK_SIZE
-        total_chunks = size // chunk_size  # last chunk absorbs the remainder
+    chunk_size, total_chunks = _chunking(size)
 
     init_body = {
         "post_info": {
