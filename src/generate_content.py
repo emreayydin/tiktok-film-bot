@@ -1,115 +1,143 @@
 """Generates a "5 Fakten über [Film/Serie]" script for a vertical TikTok video.
 
-Output is structured into intro + 5 facts + outro so the narration runs ~80-110s
-(comfortably over TikTok's 1-minute threshold) and the renderer can show a
-"FAKT n/5" badge per section.
+Uses Claude with the web-search tool to pick a film/series that is CURRENTLY hyped
+(new releases, Netflix top 10, viral shows) so the video rides existing attention.
+Output is structured into intro + 5 facts + outro so the narration runs ~80-110s.
 """
 import anthropic
 import json
 import random
+from datetime import datetime
 
+MODEL = "claude-sonnet-4-6"
 
-# Genres / buckets used to steer the model toward variety
+# Genres used only as a soft hint / for the no-web fallback
 CATEGORIES = [
     "Blockbuster", "Sci-Fi", "Horror", "Marvel & Superhelden", "Animation & Disney",
     "Netflix-Serien", "Krimi & Thriller", "Fantasy", "Kult-Klassiker", "Action",
-    "Comedy", "Drama-Serien",
 ]
-
-# English Pexels search terms used as a fallback when the model gives none,
-# keyed loosely by genre so the cinematic b-roll fits the mood.
-GENRE_VISUALS = {
-    "Sci-Fi": ["space", "futuristic city", "neon technology", "galaxy", "spaceship"],
-    "Horror": ["dark forest", "abandoned house", "fog night", "candle dark", "storm"],
-    "Marvel & Superhelden": ["city skyline", "explosion", "lightning", "skyscraper", "action"],
-    "Animation & Disney": ["fairytale castle", "magic sparkle", "colorful clouds", "fantasy", "stars"],
-    "Netflix-Serien": ["city night", "suburban street", "rain window", "cinematic room", "neon"],
-    "Krimi & Thriller": ["dark alley", "rain city night", "police lights", "shadow", "detective"],
-    "Fantasy": ["epic mountains", "ancient castle", "misty forest", "dragon fire", "medieval"],
-    "Kult-Klassiker": ["old cinema", "film reel", "vintage", "retro projector", "spotlight"],
-    "Action": ["explosion", "car chase", "fire", "helicopter", "city action"],
-    "Comedy": ["confetti", "party lights", "colorful", "bright city", "fun"],
-    "Drama-Serien": ["cinematic room", "rain window", "city dusk", "empty street", "sunset"],
-    "Blockbuster": ["cinema", "red carpet", "movie premiere", "spotlight", "film reel"],
-}
 DEFAULT_VISUALS = ["cinema", "film reel", "movie theater", "spotlight", "popcorn cinematic"]
 
 
-PROMPT_TEMPLATE = """Du bist Autor für virale TikTok-Videos im Bereich Film & Serien (deutscher Kanal).
+_RULES = """Erstelle ein Skript im Format "5 Fakten über [Titel]". Es muss FESSELND,
+faktisch korrekt und überraschend sein — echte Behind-the-Scenes-Fakten, Trivia,
+Easter Eggs, Dreh-Anekdoten oder verblüffende Hintergründe.
 
-Wähle EINEN bekannten Film oder EINE bekannte Serie aus dem Bereich: {category}
-{avoid}
-Erstelle dazu ein Skript im Format "5 Fakten über [Titel]". Es muss FESSELND, faktisch
-korrekt und überraschend sein — echte Behind-the-Scenes-Fakten, Trivia, Easter Eggs,
-Dreh-Anekdoten oder verblüffende Hintergründe, die echte Fans noch nicht alle kennen.
-
-HOOK (intro) — die ersten 2 Sekunden entscheiden:
-- Max 30 Wörter, sofortiger Pattern-Interrupt, erzeugt eine Wissenslücke
-- Nenne den Titel im Hook, niemals "Wusstest du?"
+HOOK (intro) — die ersten 2 Sekunden entscheiden über alles:
+- Max 25 Wörter, sofortiger Pattern-Interrupt (schockierende Zahl, scheinbarer
+  Widerspruch, "Niemand hat gemerkt, dass…"), nenne den Titel
+- Kündige den stärksten Fakt an ("Der letzte Fakt lässt dich [Titel] neu sehen")
+- Niemals "Wusstest du?"
 
 FAKTEN — genau 5 Stück:
-- Jeder Fakt 35-55 Wörter, in kurzen gesprochenen Sätzen, sofort auf den Punkt
-- Überraschend & wahr; steigere die Spannung, der stärkste Fakt zuletzt
+- Jeder Fakt 35-55 Wörter, kurze gesprochene Sätze, sofort auf den Punkt
+- Überraschend & wahr; nach Wucht sortiert — der KRASSESTE Fakt kommt ZULETZT
 - "headline" = knackige Überschrift (max 38 Zeichen)
 
-OUTRO — max 25 Wörter: Frage an die Zuschauer + Aufruf zu Folgen/Kommentieren.
+OUTRO — max 25 Wörter: eine zugespitzte Frage, die zum KOMMENTIEREN provoziert
+(z.B. "Welcher Fakt war für dich neu? Schreib die Nummer!") + "Folge für mehr".
 
 Sprache: Deutsch, direkte Ansprache (du).
 
-WICHTIG für gültiges JSON: KEINE doppelten Anführungszeichen (") innerhalb der Texte —
+WICHTIG für gültiges JSON: KEINE doppelten Anführungszeichen (") in den Texten —
 nutze einfache (') oder keine. Keine Zeilenumbrüche in Werten.
 
-Antworte NUR mit einem JSON-Objekt (keine Erklärung, kein Markdown):
+Antworte am ENDE mit NUR EINEM JSON-Objekt (keine Erklärung danach):
 {{
   "subject": "Exakter Film-/Serientitel",
   "kind": "Film" oder "Serie",
   "title": "Clickbait-Titel mit dem Titel, max 70 Zeichen",
   "intro": "Hook-Text",
-  "facts": [
-    {{"headline": "kurze Überschrift", "text": "Fakt-Text 35-55 Wörter"}}
-  ],
+  "facts": [{{"headline": "kurze Überschrift", "text": "Fakt-Text 35-55 Wörter"}}],
   "outro": "Outro-Text",
   "tags": ["film","serie","kino","tag4","tag5"],
   "visual_tags": ["englische","pexels","suchbegriffe","zum","mood"],
-  "category": "{category}"
+  "category": "Genre"
 }}
-
 Die "facts"-Liste muss GENAU 5 Einträge haben."""
+
+TREND_PROMPT = """Du bist Autor für virale TikTok-Videos im Bereich Film & Serien (deutscher Kanal).
+
+Suche zuerst im Web, welche Filme und Serien GERADE JETZT (Stand {date}) besonders
+angesagt/gehypt sind — z.B. aktuelle Netflix/Prime/Disney+ Top 10 in Deutschland,
+neue Kinostarts, gerade virale Serien. Wähle daraus EINEN populären Titel, der
+möglichst viel aktuelle Aufmerksamkeit hat.
+{avoid}
+{rules}"""
+
+PLAIN_PROMPT = """Du bist Autor für virale TikTok-Videos im Bereich Film & Serien (deutscher Kanal).
+
+Wähle EINEN bekannten, populären Film oder EINE Serie aus dem Bereich: {category}
+{avoid}
+{rules}"""
+
+
+def _extract_json(text: str) -> dict:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1:
+        raise ValueError("Kein JSON in der Antwort gefunden")
+    return json.loads(text[start:end + 1])
+
+
+def _text_blocks(message) -> str:
+    """Concatenates all text blocks of a (possibly tool-using) response."""
+    parts = [b.text for b in message.content if getattr(b, "type", None) == "text"]
+    return "\n".join(parts).strip()
+
+
+def _finalize(data: dict, category: str) -> dict:
+    data.setdefault("category", category or "Film & Serien")
+    if not data.get("visual_tags"):
+        data["visual_tags"] = DEFAULT_VISUALS
+    return data
 
 
 def generate_content(category: str = None, avoid: list[str] = None, attempts: int = 3) -> dict:
-    if category is None:
-        category = random.choice(CATEGORIES)
-
     from history import avoid_block
-    prompt = PROMPT_TEMPLATE.format(category=category, avoid=avoid_block(avoid or []))
-
     client = anthropic.Anthropic()
+    avoid_txt = avoid_block(avoid or [])
+    date_str = datetime.now().strftime("%d.%m.%Y")
     last_err = None
-    for attempt in range(attempts):
-        message = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2048,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = message.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        try:
-            data = json.loads(raw.strip())
-            if not data.get("facts") or len(data["facts"]) < 3:
-                raise ValueError("Zu wenige Fakten generiert")
-            data.setdefault("category", category)
-            if not data.get("visual_tags"):
-                data["visual_tags"] = GENRE_VISUALS.get(category, DEFAULT_VISUALS)
-            return data
-        except (json.JSONDecodeError, ValueError) as e:
-            last_err = e
-            print(f"Antwort ungültig (Versuch {attempt + 1}/{attempts}): {e} — wiederhole...")
 
-    raise RuntimeError(f"Konnte nach {attempts} Versuchen kein gültiges Skript erzeugen: {last_err}")
+    # --- Preferred: web search for currently trending titles ---
+    prompt = TREND_PROMPT.format(date=date_str, avoid=avoid_txt, rules=_RULES)
+    for attempt in range(attempts):
+        try:
+            msg = client.messages.create(
+                model=MODEL,
+                max_tokens=2500,
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 4}],
+                messages=[{"role": "user", "content": prompt}],
+            )
+            data = _extract_json(_text_blocks(msg))
+            if not data.get("facts") or len(data["facts"]) < 3:
+                raise ValueError("Zu wenige Fakten")
+            print(f"[web] Aktueller Titel gewählt: {data.get('subject')}")
+            return _finalize(data, category)
+        except Exception as e:  # web search unavailable / bad JSON -> fall back
+            last_err = e
+            print(f"Web-Trend-Versuch {attempt + 1}/{attempts} fehlgeschlagen: {e}")
+
+    # --- Fallback: no web search, genre-based pick ---
+    print("Fallback: ohne Web-Suche, zufälliges Genre.")
+    cat = category or random.choice(CATEGORIES)
+    prompt = PLAIN_PROMPT.format(category=cat, avoid=avoid_txt, rules=_RULES)
+    for attempt in range(attempts):
+        try:
+            msg = client.messages.create(
+                model=MODEL, max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            data = _extract_json(_text_blocks(msg))
+            if not data.get("facts") or len(data["facts"]) < 3:
+                raise ValueError("Zu wenige Fakten")
+            return _finalize(data, cat)
+        except Exception as e:
+            last_err = e
+            print(f"Fallback-Versuch {attempt + 1}/{attempts} fehlgeschlagen: {e}")
+
+    raise RuntimeError(f"Konnte kein gültiges Skript erzeugen: {last_err}")
 
 
 if __name__ == "__main__":

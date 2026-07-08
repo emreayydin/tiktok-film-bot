@@ -209,6 +209,49 @@ def _overlay_frame(content, label, total_facts, fact_idx, caption_text, path):
     return path
 
 
+def make_cover(content: dict, path: str) -> str:
+    """Renders an eye-catching 1080x1920 cover image (optional TikTok cover upload)."""
+    img = Image.new("RGB", (VIDEO_WIDTH, VIDEO_HEIGHT), (10, 12, 28))
+    d = ImageDraw.Draw(img)
+    # cinematic vertical gradient
+    top, bot = (8, 10, 30), (30, 26, 62)
+    for y in range(VIDEO_HEIGHT):
+        t = y / VIDEO_HEIGHT
+        d.line([(0, y), (VIDEO_WIDTH, y)],
+               fill=(int(top[0] + (bot[0] - top[0]) * t),
+                     int(top[1] + (bot[1] - top[1]) * t),
+                     int(top[2] + (bot[2] - top[2]) * t)))
+
+    cx = VIDEO_WIDTH / 2
+    # gold "5 FAKTEN ÜBER" pill
+    kf = _find_font(52)
+    _pill(d, "5 FAKTEN ÜBER", kf, cx, 430)
+
+    # big subject title
+    subject = _strip_emoji(content.get("subject", "")).upper()
+    tf = _find_font(120)
+    lines = _wrap(d, subject, tf, VIDEO_WIDTH - 120)
+    if len(lines) > 3:  # shrink for long titles
+        tf = _find_font(88)
+        lines = _wrap(d, subject, tf, VIDEO_WIDTH - 120)
+    y = 560
+    for line in lines:
+        w = d.textlength(line, font=tf)
+        d.text((cx - w / 2, y), line, font=tf, fill=(255, 255, 255),
+               stroke_width=7, stroke_fill=(0, 0, 0))
+        y += tf.size + 18
+
+    # teaser line
+    teaser = "Der letzte Fakt schockt dich."
+    sf = _find_font(56)
+    w = d.textlength(teaser, font=sf)
+    d.text((cx - w / 2, y + 40), teaser, font=sf, fill=GOLD,
+           stroke_width=3, stroke_fill=(0, 0, 0))
+
+    img.save(path)
+    return path
+
+
 # ---------- background montage ----------
 
 def _build_base_montage(clips: list[str], out_path: str) -> str:

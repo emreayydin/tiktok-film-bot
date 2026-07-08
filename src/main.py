@@ -18,7 +18,7 @@ except ImportError:
 
 from generate_content import generate_content
 from text_to_speech import build_narration
-from render_video import render_video
+from render_video import render_video, make_cover
 
 
 def _get_uploader(name: str):
@@ -85,6 +85,14 @@ def run(category: str = None, dry_run: bool = False, privacy: str = None,
     video_path = str(OUTPUT_DIR / f"video_{ts}.mp4")
     render_video(content, audio_path, sections, words, video_path)
     log.info(f"Video: {video_path}")
+
+    # Optional eye-catching cover (upload as TikTok cover for more taps)
+    cover_path = str(OUTPUT_DIR / f"cover_{ts}.png")
+    try:
+        make_cover(content, cover_path)
+        log.info(f"Cover: {cover_path}")
+    except Exception as e:
+        log.warning(f"Cover konnte nicht erstellt werden: {e}")
 
     if dry_run:
         log.info(f"[DRY RUN] Nicht hochgeladen. Gespeichert: {video_path}")
