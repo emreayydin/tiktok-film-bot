@@ -129,13 +129,16 @@ def upload_video(video_path: str, caption: str, privacy: str = None,
 
 
 def _inbox_upload(video_path: str, caption: str, privacy: str = None) -> str:
-    """Uploads to the creator's TikTok inbox/drafts (no privacy set here — the
-    creator picks it when publishing in the app). Returns the publish_id."""
+    """Uploads to the creator's TikTok inbox/drafts. Passes the caption as the
+    draft title so the description + hashtags are pre-filled in the app (the
+    creator still picks visibility and taps publish). Returns the publish_id."""
     access_token = get_access_token()
     size = os.path.getsize(video_path)
     chunk_size, total_chunks = _chunking(size)
 
     init_body = {
+        # pre-fills description + hashtags in the draft (TikTok accepts post_info on inbox)
+        "post_info": {"title": (caption or "")[:2200]},
         "source_info": {
             "source": "FILE_UPLOAD",
             "video_size": size,
