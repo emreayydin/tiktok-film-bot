@@ -53,10 +53,34 @@ def _build_caption(content: dict) -> str:
     return f"{content['title']}\n\n" + " ".join(hashtags[:12])
 
 
+# Self-throttle: the workflow is over-scheduled (GitHub free cron drops runs), so
+# each run checks history and only proceeds up to this many posts/day, spaced out.
+DAILY_CAP = int(os.environ.get("DAILY_CAP", "2"))
+MIN_HOURS_BETWEEN = float(os.environ.get("MIN_HOURS_BETWEEN", "5"))
+
+
+def _should_skip() -> str | None:
+    import history
+    n = history.posted_today()
+    if n >= DAILY_CAP:
+        return f"bereits {n} Entwürfe heute (Cap {DAILY_CAP})"
+    h = history.hours_since_last()
+    if h is not None and h < MIN_HOURS_BETWEEN:
+        return f"erst {h:.1f}h seit letztem Post (min {MIN_HOURS_BETWEEN}h)"
+    return None
+
+
 def run(category: str = None, dry_run: bool = False, privacy: str = None,
         uploader: str = "tiktok"):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     OUTPUT_DIR.mkdir(exist_ok=True)
+
+    # Skip early (before any paid API call) if we've already posted enough today
+    if not dry_run:
+        reason = _should_skip()
+        if reason:
+            log.info(f"Übersprungen: {reason}. Kein neuer Entwurf.")
+            return None
 
     # 1. Generate script (avoiding previously posted films/series)
     log.info("Generiere Film-/Serien-Skript...")

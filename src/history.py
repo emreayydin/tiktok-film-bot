@@ -5,7 +5,7 @@ GitHub Actions workflow, so every run sees what previous runs already produced.
 """
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 HISTORY_FILE = Path(__file__).resolve().parent.parent / "history.json"
 
@@ -36,11 +36,43 @@ def add_entry(subject: str, title: str, category: str = "") -> None:
     items = _load()
     items.append({
         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "ts_utc": datetime.now(timezone.utc).isoformat(),
         "category": category,
         "subject": subject,
         "title": title,
     })
     HISTORY_FILE.write_text(json.dumps(items[-1000:], ensure_ascii=False, indent=2))
+
+
+def _ts(entry: dict):
+    """Best-effort UTC timestamp for an entry (ts_utc, else parsed date)."""
+    t = entry.get("ts_utc")
+    if t:
+        try:
+            return datetime.fromisoformat(t)
+        except ValueError:
+            pass
+    d = entry.get("date")
+    if d:
+        try:  # legacy 'date' was naive local; treat as UTC (good enough for throttle)
+            return datetime.strptime(d, "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    return None
+
+
+def posted_today() -> int:
+    """How many videos were posted on the current UTC date."""
+    today = datetime.now(timezone.utc).date()
+    return sum(1 for x in _load() if (_ts(x) and _ts(x).date() == today))
+
+
+def hours_since_last() -> float | None:
+    """Hours since the most recent post, or None if history is empty."""
+    stamps = [t for t in (_ts(x) for x in _load()) if t]
+    if not stamps:
+        return None
+    return (datetime.now(timezone.utc) - max(stamps)).total_seconds() / 3600.0
 
 
 def avoid_block(titles: list[str]) -> str:

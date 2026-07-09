@@ -2,8 +2,10 @@ name: Daily TikTok Film-Fakten
 
 on:
   schedule:
-    # 2x täglich — 15:00 & 19:00 UTC = 17:00 & 21:00 Uhr DE (gute TikTok-Primetime)
-    - cron: "0 15,19 * * *"
+    # Über-geplant (GitHub-Cron lässt Läufe ausfallen). Der Bot drosselt sich selbst
+    # auf 2 Entwürfe/Tag mit >=5h Abstand — so kommen zuverlässig ~2/Tag an, auch
+    # wenn einige Trigger ausgelassen werden. 9-21 UTC = 11-23 Uhr DE.
+    - cron: "0 9,12,15,18,21 * * *"
   workflow_dispatch:
     inputs:
       category:
